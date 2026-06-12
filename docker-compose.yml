@@ -1,0 +1,58 @@
+services:
+  auth_service:
+    build: ./auth_service
+    container_name: auth_service
+    env_file: ./auth_service/.env
+    environment:
+      SQLITE_PATH: /service/data/auth.db
+    volumes:
+      - auth_data:/service/data
+    ports:
+      - "8000:8000"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  bot_api:
+    build: ./bot_service
+    container_name: bot_api
+    env_file: ./bot_service/.env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - rabbitmq
+
+  bot:
+    build: ./bot_service
+    container_name: bot
+    env_file: ./bot_service/.env
+    command: python -m app.bot.run
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+
+  worker:
+    build: ./bot_service
+    container_name: worker
+    env_file: ./bot_service/.env
+    command: celery -A app.infra.celery_app:celery_app worker --loglevel=info -Q llm
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+
+volumes:
+  auth_data:
